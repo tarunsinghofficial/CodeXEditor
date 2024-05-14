@@ -4,6 +4,10 @@ import herobgcode from "./assets/hero-code.png"
 import Navbar from "./components/Navbar";
 import { TypewriterEffect } from "../app/components/ui/typewriter-effect";
 import Card from "./components/Card";
+import u1 from "../app/assets/u1.svg";
+import u3 from "../app/assets/u3.svg";
+import u4 from "../app/assets/u4.svg";
+import u5 from "../app/assets/u5.svg";
 
 export default function Home() {
 
@@ -37,11 +41,11 @@ export default function Home() {
               Run your code in <span className="text-yellow-400">real-time</span> and share with others.
             </p>
             <div className="flex flex-col md:flex-row lg:flex-row gap-5 items-center justify-center">
-              <Link href="/joinroom" className="bg-button-primary rounded-lg p-2 flex items-center justify-center w-[10em] h-[3em]">
+              {/* <Link href="/joinroom" className="bg-button-primary rounded-lg p-2 flex items-center justify-center w-[10em] h-[3em]">
                 <p className="text-xl">Code live</p>
-              </Link>
-              <Link href="/login" className="border-2 border-button-primary rounded-lg flex items-center justify-center w-[10em] h-[3em]">
-                <p className="text-xl">Sign up</p>
+              </Link> */}
+              <Link href="/joinroom" className="border-2 border-button-primary rounded-lg flex items-center justify-center w-[10em] h-[3em]">
+                <p className="text-xl">Code Live</p>
               </Link>
             </div>
           </div>
@@ -54,10 +58,10 @@ export default function Home() {
             <h2 className="text-4xl md:text-5xl lg:text-7xl font-[1000] text-center">Let's <span className="text-green-500">create</span> from here</h2>
           </div>
           <div className="flex flex-wrap gap-10 justify-center">
-            <Card header="Online Compiler" description="Use our tool to let you code." bgImg="" url="/" />
-            <Card header="Collaborate with others" description="Use our tool to let you code." bgImg="" url="/" />
-            <Card header="Code in real-time" description="Use our tool to let you code." bgImg="" url="/" />
-            <Card header="Create own Rooms" description="Use our tool to let you code." bgImg="" url="/" />
+            <Card header="Online Compiler" description="Use our tool to let you code." bgImg={u5} url="/" />
+            <Card header="Collaborate with others" description="Use our tool to let you code." bgImg={u1} url="/joinroom" />
+            <Card header="Code in real-time" description="Use our tool to let you code." bgImg={u4} url="/" />
+            <Card header="Create own Rooms" description="Use our tool to let you code." bgImg={u3} url="/joinroom" />
           </div>
         </section>
       </main>

@@ -66,7 +66,7 @@ function Navbar() {
                   <Link href="/CodeEditor">Code Editor</Link>
                 </li>
                 <li>
-                  <Link href="/room">Create Room</Link>
+                  <Link href="/joinroom">Create Room</Link>
                 </li>
               </ul>
             </div>
