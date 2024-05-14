@@ -26,3 +26,10 @@ body {
     text-wrap: balance;
   }
 }
+
+
+.scroll-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  
+}
