@@ -20,8 +20,8 @@ const javascriptDefault = `// some comment`;
 
 function UserComponent({ username }) {
   return (
-    <div className="bg-gray-bg hover:bg-button-primary hover:cursor-pointer py-5 px-2 hover:rounded-lg text-button-primary hover:text-white  h-[2rem] flex flex-row gap-2 items-center group">
-      <span className="w-8 h-8 rounded-full bg-button-primary text-white text-lg text-center flex items-center justify-center">
+    <div className="bg-gray-bg hover:bg-button-primary hover:cursor-pointer py-5 px-2 hover:rounded-lg text-button-primary hover:text-white h-[2rem] flex flex-row gap-2 items-center group">
+      <span className="bg-button-primary flex items-center justify-center w-8 h-8 text-lg text-center text-white rounded-full">
         {username[0].toUpperCase()}
       </span>
       {username}
@@ -36,50 +36,82 @@ function Page() {
   const router = useRouter();
 
   const [clients, setClients] = useState([]);
+  const [socketError, setSocketError] = useState(null);
+  const [isConnecting, setIsConnecting] = useState(true);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 3;
 
   const { room } = useParams();
   const connectedUsers = params.get("username");
 
+  const [code, setCode] = useState(javascriptDefault);
+  const [theme, setTheme] = useState("cobalt");
+  const [language, setLanguage] = useState(languageOptions[0]);
+  const [output, setOutput] = useState("");
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [executionError, setExecutionError] = useState(null);
+
+  const enterPress = useKeyPress("Enter");
+  const ctrlPress = useKeyPress("Control");
+
   useEffect(() => {
     const init = async () => {
-      socketRef.current = await initSocket();
-      socketRef.current.on("connect_error", (error) => handleErrors(error));
-      socketRef.current.on("connect_failed", (error) => handleErrors(error));
-
-      function handleErrors(error) {
-        console.error("Socket connection error", error);
-        toast.error("Socket connection failed. Please try again later.");
-        //redirect to homepage
-        router.push("/");
-      }
-
-      socketRef.current.emit(ACTIONS.JOIN, {
-        //get the roomId
-        roomId: room,
-        username: connectedUsers,
-      });
-
-      socketRef.current.on(
-        ACTIONS.JOINED,
-        ({ clients, username, socketId }) => {
-          if (username !== connectedUsers) {
-            toast.success(`${connectedUsers} joined the room`);
+      try {
+        setIsConnecting(true);
+        socketRef.current = await initSocket();
+        
+        const handleErrors = (error) => {
+          console.error("Socket connection error", error);
+          setSocketError(error.message);
+          
+          if (reconnectAttempts.current < maxReconnectAttempts) {
+            reconnectAttempts.current += 1;
+            setTimeout(init, 2000 * reconnectAttempts.current); // Exponential backoff
+          } else {
+            toast.error("Unable to connect after multiple attempts. Please try again later.");
+            router.push("/");
           }
-          setClients(clients);
-          socketRef.current.emit(ACTIONS.SYNC_CODE, {
-            code: codeRef.current,
-            socketId,
-          });
-        }
-      );
+        };
 
-      //listening for disconnected
-      socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
-        toast.error(`${username} left the room`);
-        setClients((prev) =>
-          prev.filter((client) => client.socketId !== socketId)
+        socketRef.current.on("connect_error", handleErrors);
+        socketRef.current.on("connect_failed", handleErrors);
+
+        socketRef.current.on("connect", () => {
+          setSocketError(null);
+          setIsConnecting(false);
+          reconnectAttempts.current = 0;
+          
+          socketRef.current.emit(ACTIONS.JOIN, {
+            roomId: room,
+            username: connectedUsers,
+          });
+        });
+
+        socketRef.current.on(
+          ACTIONS.JOINED,
+          ({ clients, username, socketId }) => {
+            if (username !== connectedUsers) {
+              toast.success(`${username} joined the room`);
+            }
+            setClients(clients);
+            socketRef.current.emit(ACTIONS.SYNC_CODE, {
+              code: codeRef.current,
+              socketId,
+            });
+          }
         );
-      });
+
+        socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
+          toast.error(`${username} left the room`);
+          setClients((prev) =>
+            prev.filter((client) => client.socketId !== socketId)
+          );
+        });
+      } catch (err) {
+        console.error("Socket initialization error:", err);
+        handleErrors(err);
+      }
     };
 
     init();
@@ -89,38 +121,12 @@ function Page() {
         socketRef.current.disconnect();
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
+        socketRef.current.off("connect_error");
+        socketRef.current.off("connect_failed");
+        socketRef.current.off("connect");
       }
     };
-  }, []);
-
-  async function handleCopyRoomId() {
-    try {
-      await navigator.clipboard.writeText(room);
-      toast.success("Room id copied to clipboard");
-    } catch (error) {
-      toast.error("Error copying room id");
-    }
-  }
-
-  async function handleLeaveRoom() {
-    router.push("/");
-  }
-
-  //localStorage.getItem('code') ||
-  const [code, setCode] = useState(javascriptDefault);
-  const [theme, setTheme] = useState("cobalt");
-  const [language, setLanguage] = useState(languageOptions[0]);
-  const [output, setOutput] = useState("");
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
-
-  const enterPress = useKeyPress("Enter");
-  const ctrlPress = useKeyPress("Control");
-
-  const onSelectChange = (sl) => {
-    setLanguage(sl);
-  };
+  }, [room, connectedUsers, router]);
 
   useEffect(() => {
     localStorage.setItem("code", code);
@@ -128,42 +134,17 @@ function Page() {
 
   useEffect(() => {
     if (enterPress && ctrlPress) {
-      /* console.log("enterPress", enterPress);
-      console.log("ctrlPress", ctrlPress); */
       handleCompile();
     }
   }, [ctrlPress, enterPress]);
 
-  const onChange = (action, data) => {
-    switch (action) {
-      case "code": {
-        setCode(data);
-        break;
-      }
-      default: {
-        console.warn("case not handled!", action, data);
-      }
-    }
-  };
-
-  function handleThemeChange(th) {
-    const theme = th;
-    console.log("theme...", theme);
-
-    if (["light", "vs-dark"].includes(theme.value)) {
-      setTheme(theme);
-    } else {
-      defineTheme(theme.value).then((_) => setTheme(theme));
-    }
-  }
-
   useEffect(() => {
-    defineTheme("oceanic-next").then((_) =>
+    defineTheme("oceanic-next").then(() =>
       setTheme({ value: "oceanic-next", label: "Oceanic Next" })
     );
   }, []);
 
-  const handleSubmit = async () => {
+  const handleCompile = async () => {
     setLoading(true);
     try {
       const response = await axios.post(
@@ -176,166 +157,216 @@ function Page() {
         {
           headers: {
             "Content-Type": "application/json",
-            "x-rapidapi-key":
-              "c377fe8abfmsh94ba31b8a0b6956p194f15jsn6edde75aeac5",
             "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
+            // Make sure to replace this with your actual RapidAPI key
+            "x-rapidapi-key": process.env.NEXT_APP_RAPID_API_KEY,
           },
         }
       );
+  
+      // Add a small delay before polling for results
+      await new Promise(resolve => setTimeout(resolve, 2000));
+  
       const submissionToken = response.data.token;
       const pollResponse = await axios.get(
         `https://judge0-ce.p.rapidapi.com/submissions/${submissionToken}`,
         {
           headers: {
-            "x-rapidapi-key":
-              "c377fe8abfmsh94ba31b8a0b6956p194f15jsn6edde75aeac5",
             "x-rapidapi-host": "judge0-ce.p.rapidapi.com",
+            "x-rapidapi-key": process.env.NEXT_APP_RAPID_API_KEY,
           },
         }
       );
-      setOutput(
-        pollResponse.data.stdout ||
-          pollResponse.data.stderr ||
-          pollResponse.data.compile_output ||
-          "No output"
-      );
+  
+      // Handle the output based on status
+      const { stdout, stderr, compile_output, status } = pollResponse.data;
+  
+      if (status.id === 3) { // Status 3 means successful execution
+        setOutput(stdout || "Code executed successfully with no output");
+      } else if (compile_output) {
+        setOutput(`Compilation Error:\n${compile_output}`);
+      } else if (stderr) {
+        setOutput(`Runtime Error:\n${stderr}`);
+      } else {
+        setOutput(stdout || "No output");
+      }
+  
     } catch (error) {
       console.error("Error:", error);
-      setOutput("Error occurred while compiling/executing the code.");
+      if (error.response?.status === 429) {
+        setOutput("Too many requests. Please wait a moment before trying again.");
+      } else if (error.response?.status === 401) {
+        setOutput("API key is invalid or missing. Please check your configuration.");
+      } else {
+        setOutput("Error occurred while compiling/executing the code.");
+      }
     }
     setLoading(false);
   };
+  
+  const handleCopyRoomId = async () => {
+    try {
+      await navigator.clipboard.writeText(room);
+      toast.success("Room ID copied to clipboard");
+    } catch (error) {
+      toast.error("Failed to copy Room ID");
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    router.push("/");
+  };
+
+  const onSelectChange = (sl) => {
+    setLanguage(sl);
+  };
+
+  const onChange = (action, data) => {
+    if (action === "code") {
+      setCode(data);
+    }
+  };
+
+  const handleThemeChange = (th) => {
+    if (["light", "vs-dark"].includes(th.value)) {
+      setTheme(th);
+    } else {
+      defineTheme(th.value).then(() => setTheme(th));
+    }
+  };
+
+  if (isConnecting) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 mx-auto border-b-2 border-gray-900 rounded-full"></div>
+          <p className="mt-4">Connecting to room...</p>
+          {socketError && (
+            <p className="mt-2 text-red-500">Error: {socketError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div className="bg-primary-blue-light border-b-2 border-gray-border w-full py-2 px-4 relative top-0 flex justify-between items-center">
+      <div className="bg-primary-blue-light border-gray-border relative top-0 flex items-center justify-between w-full px-4 py-2 border-b-2">
         <div className="flex flex-row items-center justify-center gap-5">
-          <div className="flex flex-row gap-1 items-start">
-            <span className="w-3 h-3 rounded-full bg-red-400"></span>
-            <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
-            <span className="w-3 h-3 rounded-full bg-green-400"></span>
+          <div className="flex flex-row items-start gap-1">
+            <span className="w-3 h-3 bg-red-400 rounded-full"></span>
+            <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
+            <span className="w-3 h-3 bg-green-400 rounded-full"></span>
           </div>
           <Link
             href="/"
             className="hover:cursor-pointer flex items-center justify-center"
           >
-            <IoChevronBack className="text-gray-400 hover:text-gray-500 text-xl " />
+            <IoChevronBack className="hover:text-gray-500 text-xl text-gray-400" />
             <p className="text-gray-400">Back</p>
           </Link>
         </div>
         <div>
-          <div>
-            <div
-              onClick={handleSubmit}
-              className="flex flex-row gap-2 items-center hover:cursor-pointer bg-button-primary hover:bg-blue-500 rounded-lg w-auto p-2"
-            >
-              {loading ? (
-                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <button
+            onClick={handleCompile}
+            disabled={loading}
+            className={`hover:cursor-pointer bg-button-primary hover:bg-blue-500 flex flex-row items-center w-auto gap-2 p-2 rounded-lg ${
+              loading ? 'opacity-75' : ''
+            }`}
+          >
+            {loading ? (
+              <svg className="animate-spin w-5 h-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              ) : (
-                <FaPlay className="text-white text-xl" />
-              )}
-              <p className="text-white text-md">
-                {loading ? "Compiling..." : "Run Code"}
-              </p>
-            </div>
-          </div>
+            ) : (
+              <FaPlay className="text-xl text-white" />
+            )}
+            <span className="text-md text-white">
+              {loading ? "Compiling..." : "Run Code"}
+            </span>
+          </button>
         </div>
         <div>
           <Link href="/" className="hover:cursor-pointer">
-            <IoHelp className="text-white text-xl" />
+            <IoHelp className="text-xl text-white" />
           </Link>
         </div>
       </div>
-      <div className="">
-        <div className="grid grid-cols-1 md:grid-cols-12 lg:grid-cols-12">
-          <div className="flex flex-col justify-between h-[93vh] rounded-b-md md:col-span-2 lg:col-span-2 bg-primary-blue-light border-r-2 border-gray-border">
+      <div className="md:grid-cols-12 lg:grid-cols-12 grid grid-cols-1">
+        <div className="flex flex-col justify-between h-[93vh] rounded-b-md md:col-span-2 lg:col-span-2 bg-primary-blue-light border-r-2 border-gray-border">
+          <div>
+            <div className="p-4">
+              <Link href="/" className="text-2xl font-bold text-white">
+                CodeXEditor
+              </Link>
+              <p className="text-xs italic text-gray-400">
+                Run your code in real-time and share with others.
+              </p>
+            </div>
             <div>
-              <div className="p-4">
-                <Link href="/" className="text-2xl text-white font-bold">
-                  CodeXEditor
-                </Link>
-                <p className="text-gray-400 text-xs italic">
-                  Run your code in real-time and share with others.
-                </p>
-              </div>
-              <div>
-                <h2 className="text-lg text-left p-4">Connected</h2>
-              </div>
-              <div className="m-4 bg-gray-bg rounded-lg border-2 border-gray-border flex flex-col gap-2 p-4 h-auto max-h-[55vh]">
-                <div className="flex flex-col gap-3">
-                  {clients.map((client) => {
-                    return (
-                      <UserComponent
-                        key={client.socketId}
-                        username={client.username}
-                      />
-                    );
-                  })}
-                </div>
+              <h2 className="p-4 text-lg text-left">Connected</h2>
+            </div>
+            <div className="m-4 bg-gray-bg rounded-lg border-2 border-gray-border flex flex-col gap-2 p-4 h-auto max-h-[55vh] overflow-y-auto">
+              <div className="flex flex-col gap-3">
+                {clients.map((client) => (
+                  <UserComponent
+                    key={client.socketId}
+                    username={client.username}
+                  />
+                ))}
               </div>
             </div>
+          </div>
+          <div className="flex flex-col justify-start">
+            <div className="mb-2 ml-4">
+              <button
+                className="w-auto max-w-[10em] text-center hover:cursor-pointer bg-button-primary hover:bg-blue-500 rounded-lg p-2"
+                onClick={handleCopyRoomId}
+              >
+                Copy Room ID
+              </button>
+            </div>
+            <div className="mb-2 ml-4">
+              <button
+                className="w-auto max-w-[10em] text-center hover:cursor-pointer bg-button-primary hover:bg-blue-500 rounded-lg p-2"
+                onClick={handleLeaveRoom}
+              >
+                Leave Room
+              </button>
+            </div>
+            <div className="px-4 py-2">
+              <LanguagesDropdown onSelectChange={onSelectChange} />
+            </div>
+            <div className="px-4 py-2">
+              <ThemeDropdown handleThemeChange={handleThemeChange} theme={theme} />
+            </div>
+          </div>
+        </div>
+        <div className="md:col-span-7 lg:col-span-7 rounded-b-md">
+          <CodeEditorWindow
+            code={code}
+            onChange={onChange}
+            language={language?.value}
+            theme={theme.value}
+            socketRef={socketRef}
+            roomId={room}
+            onCodeChange={(code) => {
+              codeRef.current = code;
+            }}
+          />
+        </div>
+        <div className="md:col-span-3 lg:col-span-3 rounded-b-md">
+          <div className="p-4 flex flex-col justify-between h-[93vh] bg-primary-blue-light border-l-2 border-gray-border">
             <div className="flex flex-col justify-start">
-              <div className="ml-4 mb-2">
-                <p
-                  className="w-auto max-w-[10em] text-center hover:cursor-pointer bg-button-primary hover:bg-blue-500 rounded-lg p-2"
-                  onClick={handleCopyRoomId}
-                >
-                  Copy Room ID
-                </p>
-              </div>
-              <div className="ml-4 mb-2">
-                <p
-                  className="w-auto max-w-[10em] text-center hover:cursor-pointer bg-button-primary hover:bg-blue-500 rounded-lg p-2"
-                  onClick={handleLeaveRoom}
-                >
-                  Leave Room
-                </p>
-              </div>
-              <div className="px-4 py-2">
-                <LanguagesDropdown onSelectChange={onSelectChange} />
-              </div>
-              <div className="px-4 py-2">
-                <ThemeDropdown
-                  handleThemeChange={handleThemeChange}
-                  theme={theme}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="md:col-span-7 lg:col-span-7 rounded-b-md">
-            <div className="flex flex-col">
-              <CodeEditorWindow
-                code={code}
-                onChange={onChange}
-                language={language?.value}
-                theme={theme.value}
-                socketRef={socketRef}
-                roomId={room}
-                onCodeChange={(code) => {
-                  codeRef.current = code;
-                }}
-              />
-            </div>
-          </div>
-          <div className="md:col-span-3 lg:col-span-3 rounded-b-md">
-            <div className="p-4 flex flex-col justify-between h-[93vh] bg-primary-blue-light border-l-2 border-gray-border">
-              <div className="flex flex-col justify-start">
-                <h2 className="text-lg text-left">Output</h2>
-                <pre className="bg-primary-blue p-4 rounded-lg w-full h-[50vh] overflow-scroll scroll-hide">
-                  {output}
-                </pre>
-              </div>
-              {/* <div className="flex flex-col">
-                <h2 className="text-lg text-left">Custom Input</h2>
-                <textarea
-                  className=" bg-primary-blue w-full h- rounded-lg p-4 h-[20vh]"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-              </div> */}
+              <h2 className="text-lg text-left">Output</h2>
+              <pre className="bg-primary-blue p-4 rounded-lg w-full h-[50vh] overflow-y-auto whitespace-pre-wrap">
+                {executionError ? (
+                  <span className="text-red-500">{executionError}</span>
+                ) : (
+                  output
+                )}
+              </pre>
             </div>
           </div>
         </div>

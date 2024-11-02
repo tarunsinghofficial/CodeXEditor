@@ -33,14 +33,14 @@ export default function Home() {
   return (
     <div>
       <Navbar />
-      <main className="flex h-screen flex-col items-center">
-        <section className="text-center container mx-auto justify-center max-w-6xl space-y-8 p-none md:p-16 lg:p-24">
+      <main className="flex flex-col items-center h-screen">
+        <section className="p-none md:p-16 lg:p-24 container justify-center max-w-6xl mx-auto space-y-8 text-center">
           <div className="mt-[5em] space-y-5">
             <TypewriterEffect words={words} />
-            <p className="text-sm md:text-lg lg:text-xl text-center font-semibold">
+            <p className="md:text-lg lg:text-xl text-sm font-semibold text-center">
               Run your code in <span className="text-yellow-400">real-time</span> and share with others.
             </p>
-            <div className="flex flex-col md:flex-row lg:flex-row gap-5 items-center justify-center">
+            <div className="md:flex-row lg:flex-row flex flex-col items-center justify-center gap-5">
               {/* <Link href="/joinroom" className="bg-button-primary rounded-lg p-2 flex items-center justify-center w-[10em] h-[3em]">
                 <p className="text-xl">Code live</p>
               </Link> */}
@@ -53,11 +53,11 @@ export default function Home() {
             <Image src={herobgcode} alt="code-ide" className="shadow-xl shadow-secondary-blue top-[25em] border-[0.1em] border-gray-border rounded-xl w-full md:w-auto lg:w-auto h-auto md:h-[25em] lg:h-[35em] md:max-w-[50em] lg:max-w-none" />
           </div>
         </section>
-        <section className="container mx-auto justify-center max-w-6xl mt-10 ">
+        <section className=" container justify-center max-w-6xl mx-auto mt-10">
           <div>
             <h2 className="text-4xl md:text-5xl lg:text-7xl font-[1000] text-center">Let's <span className="text-green-500">create</span> from here</h2>
           </div>
-          <div className="flex flex-wrap gap-10 justify-center">
+          <div className="flex flex-wrap justify-center gap-10">
             <Card header="Online Compiler" description="Use our tool to let you code." bgImg={u5} url="/" />
             <Card header="Collaborate with others" description="Use our tool to let you code." bgImg={u1} url="/joinroom" />
             <Card header="Code in real-time" description="Use our tool to let you code." bgImg={u4} url="/" />
