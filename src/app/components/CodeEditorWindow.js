@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import ACTIONS from "../actions";
-import debounce from 'lodash/debounce';
 
 const CodeEditorWindow = ({
   onChange,
@@ -14,81 +13,63 @@ const CodeEditorWindow = ({
 }) => {
   const [value, setValue] = useState(code || "");
   const editorRef = useRef(null);
-  const isTyping = useRef(false);
-  const lastReceivedCode = useRef("");
-  
-  // Debounced emit function to prevent too frequent updates
-  const debouncedEmit = useRef(
-    debounce((code) => {
-      if (socketRef.current) {
-        socketRef.current.emit(ACTIONS.CODE_CHANGE, { roomId, code });
-      }
-    }, 100)
-  ).current;
+  const lastReceivedCode = useRef(code || "");
 
   function handleEditorDidMount(editor, monaco) {
     editorRef.current = editor;
     
-    // Configure editor options for better performance
     editor.getModel()?.updateOptions({
       tabSize: 2,
       insertSpaces: true,
       trimAutoWhitespace: true,
       wordWrap: 'on'
     });
-
-    // Handle content changes with cursor position preservation
-    editor.onDidChangeModelContent((event) => {
-      if (!isTyping.current) {
-        const code = editor.getValue();
-        if (code !== lastReceivedCode.current) {
-          onCodeChange(code);
-          debouncedEmit(code);
-        }
-      }
-    });
   }
 
+  // Handle local code changes
+  const handleEditorChange = (newValue) => {
+    setValue(newValue);
+    onChange("code", newValue);
+    onCodeChange(newValue);
+    
+    // Emit code changes to other users
+    if (socketRef.current) {
+      socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+        roomId,
+        code: newValue,
+        version: Date.now() // Add version for conflict resolution
+      });
+    }
+  };
+
+  // Listen for remote code changes
   useEffect(() => {
-    const socket = socketRef.current;
-    if (socket) {
-      socket.on(ACTIONS.CODE_CHANGE, ({ code }) => {
-        if (
-          code !== null && 
-          code !== lastReceivedCode.current && 
-          editorRef.current
-        ) {
-          isTyping.current = true;
-          lastReceivedCode.current = code;
-          
-          // Preserve cursor position
-          const position = editorRef.current.getPosition();
-          editorRef.current.setValue(code);
-          editorRef.current.setPosition(position);
-          
-          // Update local state
-          setValue(code);
-          
-          // Reset typing flag
-          setTimeout(() => {
-            isTyping.current = false;
-          }, 10);
+    if (socketRef.current) {
+      socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code: remoteCode }) => {
+        if (remoteCode !== lastReceivedCode.current) {
+          lastReceivedCode.current = remoteCode;
+          setValue(remoteCode);
+          if (editorRef.current) {
+            const position = editorRef.current.getPosition();
+            editorRef.current.setValue(remoteCode);
+            editorRef.current.setPosition(position);
+          }
         }
       });
 
       return () => {
-        socket.off(ACTIONS.CODE_CHANGE);
-        debouncedEmit.cancel();
+        socketRef.current.off(ACTIONS.CODE_CHANGE);
       };
     }
   }, [socketRef.current]);
 
-  const handleEditorChange = (value) => {
-    if (!isTyping.current) {
-      setValue(value);
-      onChange("code", value);
+  // Sync initial code when joining room
+  useEffect(() => {
+    if (code !== value) {
+      setValue(code);
+      lastReceivedCode.current = code;
     }
-  };
+  }, [code]);
 
   return (
     <div className="shadow-4xl w-full h-full overflow-hidden">
